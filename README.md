@@ -1,3 +1,5 @@
+<p><img src="assets/logo.svg" alt="Gatewise logo" width="80" height="80" /></p>
+
 # Gatewise
 
 HTTP admission control for Go applications and HTTP backends. Gatewise bounds concurrent requests, reserves capacity for critical traffic, and optionally adjusts admission using latency and error feedback.
