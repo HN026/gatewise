@@ -34,6 +34,8 @@ mux.Handle("POST /reindex", guard.Middleware(
 
 This is an integration fragment: `mux` is your `http.ServeMux` and `checkout`/`reindex` are application handlers. See the [complete example](https://hn026.github.io/gatewise-site/#/installation).
 
+After adding the imports and handlers to your application, run `go mod tidy` to resolve the packages it uses, then build or start your service.
+
 The example allows 20 requests running simultaneously across both routes, with background work limited to 15. This is concurrency, not requests per second. Reuse one guard for routes sharing capacity. Excess requests receive structured HTTP 503 responses. Limits are configurable and apply per process.
 
 ## Standalone proxy
