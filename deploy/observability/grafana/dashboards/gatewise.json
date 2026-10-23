@@ -8,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "5s",
   "time": {
     "from": "now-15m",
@@ -662,6 +662,324 @@
       "fieldConfig": {
         "defaults": {
           "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "Controller completed-window samples",
+      "type": "timeseries",
+      "description": "Samples in the last evaluated window; zero before evaluation.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "gatewise-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "gatewise_controller_last_window_samples{service=~\"$service\",instance=~\"$instance\"}",
+          "legendFormat": "{{service}} {{instance}} {{decision}} {{reason}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "gatewise-prometheus"
+          },
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "title": "Controller normalized p90 latency",
+      "type": "timeseries",
+      "description": "Bucket-estimated handler duration / route budget. A value above 1 indicates latency pressure.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "gatewise-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "gatewise_controller_last_p90_ratio{service=~\"$service\",instance=~\"$instance\"}",
+          "legendFormat": "{{service}} {{instance}} {{decision}} {{reason}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "gatewise-prometheus"
+          },
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "title": "Controller failure fraction",
+      "type": "timeseries",
+      "description": "5xx and panic fraction among contributing samples; cancellations excluded.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "gatewise-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "gatewise_controller_last_failure_fraction{service=~\"$service\",instance=~\"$instance\"}",
+          "legendFormat": "{{service}} {{instance}} {{decision}} {{reason}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "gatewise-prometheus"
+          },
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "title": "Controller last decision",
+      "type": "timeseries",
+      "description": "Value 1 identifies the last decision and bounded reason, including hold and not_evaluated.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "gatewise-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "gatewise_controller_last_decision{service=~\"$service\",instance=~\"$instance\"}",
+          "legendFormat": "{{service}} {{instance}} {{decision}} {{reason}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "gatewise-prometheus"
+          },
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 17,
+      "title": "Controller evaluation age",
+      "type": "timeseries",
+      "description": "Age of the last completed window. Idle traffic can legitimately leave an old window.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "gatewise-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 64,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - (gatewise_controller_last_evaluation_timestamp_seconds{service=~\"$service\",instance=~\"$instance\"} > 0)",
+          "legendFormat": "{{service}} {{instance}} {{decision}} {{reason}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "gatewise-prometheus"
+          },
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "title": "Controller observed saturation",
+      "type": "timeseries",
+      "description": "Whether total or background capacity was reached during the last evaluated window.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "gatewise-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 64,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "gatewise_controller_last_window_saturated{service=~\"$service\",instance=~\"$instance\"}",
+          "legendFormat": "{{service}} {{instance}} {{decision}} {{reason}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "gatewise-prometheus"
+          },
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,

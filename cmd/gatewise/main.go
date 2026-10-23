@@ -15,9 +15,19 @@ import (
 
 func main() {
 	path := flag.String("config", "configs/local.json", "path to JSON configuration")
+	check := flag.Bool("check-config", false, "validate configuration and exit without starting a listener or contacting upstreams")
 	envFile := flag.String("env-file", ".env", "dotenv path; empty disables loading")
 	flag.Parse()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	if *check {
+		c, err := config.LoadWithEnv(*path, *envFile)
+		if err != nil {
+			logger.Error("invalid configuration", "error", err.Error())
+			os.Exit(1)
+		}
+		logger.Info("configuration valid", "services", len(c.Services), "routes", len(c.Routes))
+		return
+	}
 	if err := run(*path, *envFile, logger); err != nil {
 		logger.Error("gatewise stopped", "error", err.Error())
 		os.Exit(1)

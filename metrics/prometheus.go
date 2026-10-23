@@ -9,8 +9,9 @@ import (
 )
 
 type collector struct {
-	service                                                                                               *middleware.Service
-	limit, minimum, maximum, reserved, active, info, admitted, rejected, completed, duration, adjustments *prometheus.Desc
+	controllerSamples, controllerRatio, controllerFailures, controllerTime, controllerDecision, controllerSaturated *prometheus.Desc
+	service                                                                                                         *middleware.Service
+	limit, minimum, maximum, reserved, active, info, admitted, rejected, completed, duration, adjustments           *prometheus.Desc
 }
 
 // Register adds one service to registry. Service names must be unique within that
@@ -24,23 +25,29 @@ func Register(registry prometheus.Registerer, service *middleware.Service) error
 		return prometheus.NewDesc("gatewise_"+name, help, labels, prometheus.Labels{"service": serviceName})
 	}
 	c := &collector{service: service,
-		limit:       desc("concurrency_limit", "Current admission limit."),
-		minimum:     desc("concurrency_min_limit", "Configured lower admission bound."),
-		maximum:     desc("concurrency_max_limit", "Configured admission ceiling."),
-		reserved:    desc("concurrency_reserved_critical", "Capacity unavailable to background work."),
-		active:      desc("requests_in_flight", "Currently admitted work; may exceed a reduced limit while draining.", "priority"),
-		info:        desc("service_info", "Service configuration information.", "mode"),
-		admitted:    desc("requests_admitted_total", "Requests admitted to handlers.", "priority"),
-		rejected:    desc("requests_rejected_total", "Requests rejected before reaching handlers.", "priority", "reason"),
-		completed:   desc("requests_completed_total", "Admitted requests that ended.", "priority", "outcome", "status_class"),
-		duration:    desc("request_duration_seconds", "Duration of admitted handler work, excluding admission rejections.", "priority", "outcome"),
-		adjustments: desc("limit_adjustments_total", "Adaptive limit changes.", "direction", "reason"),
+		controllerSamples:   desc("controller_last_window_samples", "Completed samples in the last evaluated adaptive window."),
+		controllerRatio:     desc("controller_last_p90_ratio", "Bucket-estimated p90 handler duration divided by latency target in the last evaluated window."),
+		controllerFailures:  desc("controller_last_failure_fraction", "Failed sample fraction in the last evaluated adaptive window."),
+		controllerTime:      desc("controller_last_evaluation_timestamp_seconds", "Unix timestamp of the last adaptive evaluation; zero before evaluation."),
+		controllerDecision:  desc("controller_last_decision", "Last adaptive decision, including hold and not_evaluated; bounded labels.", "decision", "reason"),
+		controllerSaturated: desc("controller_last_window_saturated", "Whether saturation was observed in the last evaluated adaptive window."),
+		limit:               desc("concurrency_limit", "Current admission limit."),
+		minimum:             desc("concurrency_min_limit", "Configured lower admission bound."),
+		maximum:             desc("concurrency_max_limit", "Configured admission ceiling."),
+		reserved:            desc("concurrency_reserved_critical", "Capacity unavailable to background work."),
+		active:              desc("requests_in_flight", "Currently admitted work; may exceed a reduced limit while draining.", "priority"),
+		info:                desc("service_info", "Service configuration information.", "mode"),
+		admitted:            desc("requests_admitted_total", "Requests admitted to handlers.", "priority"),
+		rejected:            desc("requests_rejected_total", "Requests rejected before reaching handlers.", "priority", "reason"),
+		completed:           desc("requests_completed_total", "Admitted requests that ended.", "priority", "outcome", "status_class"),
+		duration:            desc("request_duration_seconds", "Duration of admitted handler work, excluding admission rejections.", "priority", "outcome"),
+		adjustments:         desc("limit_adjustments_total", "Adaptive limit changes.", "direction", "reason"),
 	}
 	return registry.Register(c)
 }
 
 func (c *collector) Describe(out chan<- *prometheus.Desc) {
-	for _, desc := range []*prometheus.Desc{c.limit, c.minimum, c.maximum, c.reserved, c.active, c.info, c.admitted, c.rejected, c.completed, c.duration, c.adjustments} {
+	for _, desc := range []*prometheus.Desc{c.limit, c.minimum, c.maximum, c.reserved, c.active, c.info, c.admitted, c.rejected, c.completed, c.duration, c.adjustments, c.controllerSamples, c.controllerRatio, c.controllerFailures, c.controllerTime, c.controllerDecision, c.controllerSaturated} {
 		out <- desc
 	}
 }
@@ -52,6 +59,23 @@ func (c *collector) Collect(out chan<- prometheus.Metric) {
 	}
 	counter := func(desc *prometheus.Desc, value uint64, labels ...string) {
 		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, float64(value), labels...)
+	}
+	if s.Controller.Enabled {
+		e := s.Controller
+		gauge(c.controllerSamples, float64(e.Samples))
+		gauge(c.controllerRatio, e.P90Ratio)
+		gauge(c.controllerFailures, e.FailureFraction)
+		timestamp := 0.0
+		if !e.EvaluatedAt.IsZero() {
+			timestamp = float64(e.EvaluatedAt.UnixNano()) / 1e9
+		}
+		gauge(c.controllerTime, timestamp)
+		gauge(c.controllerDecision, 1, e.Decision, e.Reason)
+		saturated := 0.0
+		if e.Saturated {
+			saturated = 1
+		}
+		gauge(c.controllerSaturated, saturated)
 	}
 	gauge(c.limit, float64(s.State.Limit))
 	gauge(c.minimum, float64(s.State.MinConcurrent))
