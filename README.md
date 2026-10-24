@@ -13,7 +13,7 @@ Use it as Go middleware or as a standalone proxy in front of an HTTP service wri
 Requires Go 1.22 or newer.
 
 ```sh
-go get github.com/HN026/gatewise@v0.2.0
+go get github.com/HN026/gatewise@v0.3.0
 ```
 
 ```go
@@ -43,7 +43,7 @@ The example allows 20 requests running simultaneously across both routes, with b
 ## Standalone proxy
 
 ```sh
-git clone --branch v0.2.0 https://github.com/HN026/gatewise.git
+git clone --branch v0.3.0 https://github.com/HN026/gatewise.git
 cd gatewise
 go build -o bin/gatewise ./cmd/gatewise
 ```
@@ -76,6 +76,14 @@ curl -i http://127.0.0.1:8080/orders/hello
 ```
 
 The second request forwards `/hello` to your backend; its response depends on that handler. Routing uses the longest matching path-segment prefix. Configuration precedence is process environment > dotenv > JSON > defaults. Configuration is resolved at startup. See the [reference](https://hn026.github.io/gatewise-site/#/reference) for adaptive settings, route budgets and environment variables.
+
+## Tenant isolation
+
+Optional `ServiceConfig.Tenants` adds per-tenant concurrency caps inside each service budget. Supply a resolver using your authenticated principal. The proxy accepts a dedicated identity header only from configured immediate-peer CIDRs; the ingress must authenticate and overwrite it. Forwarded headers do not establish trust.
+
+Tracking has a configurable bound and idle expiry. Missing identities and registry exhaustion reject by default; explicit bounded shared-bucket policies are available. Active entries are never evicted. Tenant rejections do not feed adaptive latency or failure observations. Limits apply per guard and process, not across replicas.
+
+`guard.TenantSnapshot()` and aggregate Prometheus metrics expose tracking and rejection reasons without identity labels. See the [tenant integration guide](https://hn026.github.io/gatewise-site/#/installation/tenant-isolation) and [Postman example](https://hn026.github.io/gatewise-site/#/examples/tenant-isolation).
 
 ## Metrics and operations
 
