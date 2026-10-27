@@ -13,7 +13,7 @@ Use it as Go middleware or as a standalone proxy in front of an HTTP service wri
 Requires Go 1.22 or newer.
 
 ```sh
-go get github.com/HN026/gatewise@v0.5.0
+go get github.com/HN026/gatewise@v0.6.0
 ```
 
 ```go
@@ -43,7 +43,7 @@ The example allows 20 requests running simultaneously across both routes, with b
 ## Standalone proxy
 
 ```sh
-git clone --branch v0.5.0 https://github.com/HN026/gatewise.git
+git clone --branch v0.6.0 https://github.com/HN026/gatewise.git
 cd gatewise
 go build -o bin/gatewise ./cmd/gatewise
 ```
@@ -130,3 +130,5 @@ Optional `ServiceConfig.Priorities` adds 2–8 ordered tiers, compatibility mapp
 ### Tenant sharing
 
 Optional `TenantConfig.Sharing` turns tenant caps into target shares and allows identified tenants to borrow up to separate total ceilings. Active/recent demand protects other tenants’ shares; targets scale down when the adaptive limit is smaller, and returning below-share work can pause new borrowing. Running requests finish normally. Hard caps remain the default. [Setup and allocation rules](https://hn026.github.io/gatewise-site/#/installation/tenant-sharing).
+
+Optional `ServiceConfig.Decisions` combines cached overload observations with existing admission controls. Start in observe mode, configure freshness/failure policies, then choose enforcement. Providers run in the background; existing integrations remain unchanged. [Signal setup](https://hn026.github.io/gatewise-site/#/installation/signal-setup) · [API and failure semantics](https://hn026.github.io/gatewise-site/#/reference/decision-reference).
