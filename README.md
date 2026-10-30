@@ -13,7 +13,7 @@ Use it as Go middleware or as a standalone proxy in front of an HTTP service wri
 Requires Go 1.22 or newer.
 
 ```sh
-go get github.com/HN026/gatewise@v0.8.0
+go get github.com/HN026/gatewise@v0.8.1
 ```
 
 ```go
@@ -46,14 +46,14 @@ The example allows 20 requests running simultaneously across both routes, with b
 
 `sqlguard.New(db, engine, metadata)` wraps an existing `database/sql` pool. Statements hold admission through completion, rows through Close/terminal iteration, and transactions through Commit/Rollback. Always close rows; use transaction methods and `tx.Context()` inside `InTx`. Transaction control retains capacity through driver cleanup and may wait for configured driver/network timeouts. The application owns the driver and pool.
 
-`regulator.SQLPool` samples finite-pool utilization. `postgres.NewReplication` observes one named physical standby from a separate primary monitoring pool, distinguishing idle catch-up from real WAL byte backlog and unavailable data. These are application adapters, not PostgreSQL-engine enforcement or cluster-wide limits.
+`regulator.SQLPool` samples finite-pool utilization. Opt-in `regulator.NewSQLPoolContention` distinguishes occupancy from new pool waits: it emits 0/1 pressure from WaitCount deltas and clears only after a configurable quiet interval with a nonfull pool. Historical waits before construction are ignored. It is not queue depth or an availability check. Existing providers and controller defaults are unchanged. `postgres.NewReplication` observes one named physical standby from a separate primary monitoring pool, distinguishing idle catch-up from real WAL byte backlog and unavailable data. These are application adapters, not PostgreSQL-engine enforcement or cluster-wide limits.
 
 See [operation installation and lifetime rules](https://hn026.github.io/gatewise-site/#/installation/operation-setup) and the [runnable SQL/worker/standby example](https://hn026.github.io/gatewise-site/#/examples/operation-example). Register either an HTTP guard or operation engine with `metrics.Register`; work metrics distinguish `http` and `operation` without adding layered counts as end-to-end throughput.
 
 ## Standalone proxy
 
 ```sh
-git clone --branch v0.8.0 https://github.com/HN026/gatewise.git
+git clone --branch v0.8.1 https://github.com/HN026/gatewise.git
 cd gatewise
 go build -o bin/gatewise ./cmd/gatewise
 ```
