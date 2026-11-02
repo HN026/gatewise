@@ -13,7 +13,7 @@ Use it as Go middleware or as a standalone proxy in front of an HTTP service wri
 Requires Go 1.22 or newer.
 
 ```sh
-go get github.com/HN026/gatewise@v0.9.0
+go get github.com/HN026/gatewise@v0.10.0
 ```
 
 ```go
@@ -121,7 +121,27 @@ Validate proxy configuration offline before deployment:
 
 This exits without opening a listener or contacting upstreams. It does not verify backend availability.
 
-Slots are held until synchronous handlers return. There is no admission queue or preemption. Adaptive mode uses completed-request feedback within configured bounds; it does not directly measure database capacity. Multiple replicas have independent budgets. Applications own retry policy, dependency timeouts, authentication and TLS. Long-lived streaming and WebSocket support are outside the current scope.
+Slots are held until synchronous handlers return. Immediate rejection is the default; optional bounded waiting is available. There is no preemption. Adaptive mode uses completed-request feedback within configured bounds; it does not directly measure database capacity. Multiple replicas have independent budgets. Applications own retry policy, dependency timeouts, authentication and TLS. Long-lived streaming and WebSocket support are outside the current scope.
+
+## Optional bounded waiting
+
+Set `ServiceConfig.Queue` (or `operation.Config.Queue`) to opt in:
+
+```go
+Queue: &middleware.QueueConfig{
+    MaxWaiting: 32, MaxWait: 40 * time.Millisecond,
+    AgingAfter: 20 * time.Millisecond,
+    Reserved: map[middleware.Priority]int{middleware.Critical: 8},
+},
+```
+
+These are example values. Waiting slots and execution concurrency are separate budgets. FIFO within a tier, priority preference and aging choose the next eligible request; hard execution reservations still apply. Only local capacity refusals wait. Every selected request rechecks policies and holds no execution, tenant or resource permit while waiting. The earlier caller deadline wins; full/reserved/expired waits return explicit reasons. Existing work is never preempted or released just because its context cancels.
+
+HTTP queues buffer known-length bodies up to 64 KiB before admission so HTTP/1.1 disconnects are observable while waiting. Configure `http.Server.ReadTimeout` to bound upload preparation. Large/unknown bodies keep streaming and fail fast instead of waiting. `QueueBodyMaxBytes` customizes buffering (-1 disables it; maximum 1 MiB). Proxy configuration uses `queue.max_body_bytes` and requires a positive top-level `read_timeout` while buffering is enabled. `Request.NoWait` opts a native operation out of waiting while retaining queue order.
+
+Queue time is reported separately from processing feedback. Assess useful completions against the whole response budget, including preparation and waiting. A queue does not add capacity or guarantee lower-tier progress under unavailable execution capacity. It is in memory, process-local and non-durable. Disable it by removing Queue / the JSON queue object, or setting the service's `QUEUE_ENABLED=false` environment override and restarting.
+
+[Setup and exact policy](https://hn026.github.io/gatewise-site/#/installation/bounded-waiting) · [Database-backed comparison](https://hn026.github.io/gatewise-site/#/benchmarks/queue)
 
 ## Demo example and measurements
 
@@ -137,7 +157,7 @@ go vet ./...
 go build ./cmd/gatewise
 ```
 
-Public packages are `middleware/` and `metrics/`. Executable wiring is in `cmd/`; implementation packages are in `internal/`; focused tests are under `tests/`.
+Public packages include `operation/`, `middleware/`, `sqlguard/`, `decision/`, `priority/`, `regulator/`, `postgres/` and `metrics/`. Executable wiring is in `cmd/`; implementation packages are in `internal/`; focused tests are under `tests/`.
 
 ## License
 
@@ -145,7 +165,7 @@ MIT. Gatewise is an independent project inspired by published overload-control t
 
 ### Priority propagation
 
-Optional `ServiceConfig.Priorities` adds 2–8 ordered tiers, compatibility mappings for Critical/Background, trusted HTTP metadata and optional rotating cohorts. Use `priority.With` after authentication and `priority.Transport` with an explicit downstream host allowlist. Missing metadata uses the route default; untrusted supplied metadata returns 403. Cohorts provide consistent ordering within a UTC epoch, not identical admission decisions across services or starvation guarantees. Existing services without tier configuration retain two-class admission. No queue or capacity borrowing is added.
+Optional `ServiceConfig.Priorities` adds 2–8 ordered tiers, compatibility mappings for Critical/Background, trusted HTTP metadata and optional rotating cohorts. Use `priority.With` after authentication and `priority.Transport` with an explicit downstream host allowlist. Missing metadata uses the route default; untrusted supplied metadata returns 403. Cohorts provide consistent ordering within a UTC epoch, not identical admission decisions across services or starvation guarantees. Existing services without tier configuration retain two-class admission. Priority configuration alone does not enable waiting or capacity borrowing.
 
 [Priority setup](https://hn026.github.io/gatewise-site/#/installation/priority-propagation) · [Runnable service chain](https://hn026.github.io/gatewise-site/#/examples/priority-chain)
 
