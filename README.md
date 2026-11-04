@@ -13,7 +13,7 @@ Use it as Go middleware or as a standalone proxy in front of an HTTP service wri
 Requires Go 1.22 or newer.
 
 ```sh
-go get github.com/HN026/gatewise@v0.10.0
+go get github.com/HN026/gatewise@v0.11.0
 ```
 
 ```go
@@ -148,6 +148,14 @@ Queue time is reported separately from processing feedback. Assess useful comple
 The separate [documentation repository](https://github.com/HN026/gatewise-site) provides a source-only commerce example: orders, catalog and inventory services, three PostgreSQL databases, and a portable Postman collection. Both proxy and middleware modes are supported. [Download and run the demo example](https://hn026.github.io/gatewise-site/#/examples).
 
 [Published benchmarks](https://hn026.github.io/gatewise-site/#/benchmarks) report sustained SQL traffic, overload, injected database failures and recovery. Results separate successful work within a latency budget, successful-request p95, rejection rates and SQL-pool waits. These controlled local experiments do not establish production capacity. The older synthetic runner remains available in `benchmarks/` for custom HTTP fixtures.
+
+## Choose and tune a policy
+
+Start with the smallest policy that meets the service's latency and failure goals. A rate limiter enforces a request quota; a classless semaphore may be sufficient for a stable concurrency ceiling. Gatewise adds priority reservations, adaptive limits and optional bounded waiting when those are useful. Rate limits can be used alongside admission control.
+
+A proxy limit covers active proxy requests. After cancellation, a remote handler may still be cleaning up; this is not a hard bound on all remote work. Middleware holds admission until its protected handler returns. Use operation/SQL guards to protect the corresponding backend lifetime.
+
+The [policy comparison](https://hn026.github.io/gatewise-site/#/benchmarks/comparison) runs unprotected traffic, a semaphore, three token-bucket rates and Gatewise against the same PostgreSQL application. It reports useful completions, refusals, failures, pool waiting, recovery and wrapper overhead. These local measurements are not production capacity or a Cinnamon performance comparison. The [tuning guide](https://hn026.github.io/gatewise-site/#/installation/choose-policy) covers concurrency sweeps, reservations, adaptive bounds, deadline-aware waiting and recovery checks.
 
 ## Development
 
