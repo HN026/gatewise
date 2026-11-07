@@ -13,7 +13,7 @@ Use it as Go middleware or as a standalone proxy in front of an HTTP service wri
 Requires Go 1.22 or newer.
 
 ```sh
-go get github.com/HN026/gatewise@v0.1.0
+go get github.com/HN026/gatewise@v0.2.0
 ```
 
 ```go
@@ -43,7 +43,7 @@ The example allows 20 requests running simultaneously across both routes, with b
 ## Standalone proxy
 
 ```sh
-git clone --branch v0.1.0 https://github.com/HN026/gatewise.git
+git clone --branch v0.2.0 https://github.com/HN026/gatewise.git
 cd gatewise
 go build -o bin/gatewise ./cmd/gatewise
 ```
@@ -81,13 +81,23 @@ The second request forwards `/hello` to your backend; its response depends on th
 
 The proxy exposes `/healthz` and Prometheus `/metrics` outside admission. Go applications can register a guard using `metrics.Register` with their own Prometheus registry. A Grafana dashboard and optional local monitoring stack are included under `deploy/observability/`.
 
+Adaptive consumers can inspect `guard.ControllerSnapshot()` for the last evaluated sample count, latency ratio, failure fraction and decision, including holds. The Prometheus collector and Grafana dashboard expose the same observations.
+
+Validate proxy configuration offline before deployment:
+
+```sh
+./bin/gatewise -check-config -config configs/orders.json -env-file ""
+```
+
+This exits without opening a listener or contacting upstreams. It does not verify backend availability.
+
 Slots are held until synchronous handlers return. There is no admission queue or preemption. Adaptive mode uses completed-request feedback within configured bounds; it does not directly measure database capacity. Multiple replicas have independent budgets. Applications own retry policy, dependency timeouts, authentication and TLS. Long-lived streaming and WebSocket support are outside the current scope.
 
 ## Demo example and measurements
 
-The separate [documentation repository](https://github.com/HN026/gatewise-site) contains independent demo backends, a middleware consumer, a synthetic benchmark fixture and Postman requests. [Download and run the demo example](https://hn026.github.io/gatewise-site/#/examples).
+The separate [documentation repository](https://github.com/HN026/gatewise-site) provides a source-only commerce example: orders, catalog and inventory services, three PostgreSQL databases, and a portable Postman collection. Both proxy and middleware modes are supported. [Download and run the demo example](https://hn026.github.io/gatewise-site/#/examples).
 
-Published charts describe controlled local experiments, not production capacity guarantees. Rejected requests and successful-request latency are reported separately. The benchmark runner is in `benchmarks/`; the fixture is supplied in the demo example.
+[Published benchmarks](https://hn026.github.io/gatewise-site/#/benchmarks) report sustained SQL traffic, overload, injected database failures and recovery. Results separate successful work within a latency budget, successful-request p95, rejection rates and SQL-pool waits. These controlled local experiments do not establish production capacity. The older synthetic runner remains available in `benchmarks/` for custom HTTP fixtures.
 
 ## Development
 

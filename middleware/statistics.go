@@ -11,6 +11,7 @@ import (
 type Statistics struct {
 	Name           string
 	State          ServiceState
+	Controller     ControllerState
 	Priorities     [2]PriorityStatistics
 	DurationBounds [11]float64
 	Adjustments    [2][3]uint64 // decrease/increase; latency_pressure/server_errors/healthy_saturation
@@ -119,7 +120,8 @@ func (s *statistics) adjustment(previous, current int, reason string) {
 // snapshot. Scraping this method does not count as service traffic.
 func (s *Service) Statistics() Statistics {
 	state := s.Snapshot()
+	controller := s.ControllerSnapshot()
 	s.statistics.mu.Lock()
 	defer s.statistics.mu.Unlock()
-	return Statistics{Name: s.name, State: state, Priorities: s.statistics.priorities, DurationBounds: durationBounds, Adjustments: s.statistics.adjustments}
+	return Statistics{Name: s.name, State: state, Controller: controller, Priorities: s.statistics.priorities, DurationBounds: durationBounds, Adjustments: s.statistics.adjustments}
 }

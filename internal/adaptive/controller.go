@@ -17,6 +17,16 @@ type Adjustment struct {
 	P90Ratio                 float64
 }
 
+// Evaluation describes the last completed feedback window, including hold decisions.
+type Evaluation struct {
+	EvaluatedAt               time.Time
+	Samples                   int
+	P90Ratio, FailureFraction float64
+	PreviousLimit, Limit      int
+	Saturated                 bool
+	Decision, Reason          string
+}
+
 type Controller struct {
 	mu                sync.Mutex
 	limiter           *admission.Limiter
@@ -26,6 +36,7 @@ type Controller struct {
 	histogram         [8]int
 	samples, failures int
 	saturated         bool
+	last              Evaluation
 }
 
 func New(limiter *admission.Limiter, c Config) *Controller {
@@ -113,6 +124,19 @@ func (c *Controller) End(priority admission.Priority, generation uint64, now tim
 		}
 		reason = "healthy_saturation"
 	}
+	decision := "hold"
+	if next < current {
+		decision = "decrease"
+	} else if next > current {
+		decision = "increase"
+	}
+	evaluationReason := reason
+	if evaluationReason == "" {
+		evaluationReason = "no_change"
+	}
+	c.last = Evaluation{EvaluatedAt: now, Samples: c.samples, P90Ratio: p90,
+		FailureFraction: float64(c.failures) / float64(c.samples), PreviousLimit: current,
+		Limit: next, Saturated: c.saturated, Decision: decision, Reason: evaluationReason}
 	samples := c.samples
 	c.reset(now)
 	if next == current {
@@ -129,4 +153,12 @@ func (c *Controller) reset(now time.Time) {
 	c.samples = 0
 	c.failures = 0
 	c.saturated = false
+}
+
+// Snapshot does not evaluate or reset the controller. A zero timestamp means no
+// complete window has met both the interval and sample requirements yet.
+func (c *Controller) Snapshot() Evaluation {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.last
 }

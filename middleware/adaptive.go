@@ -76,3 +76,32 @@ func (s *Service) Snapshot() ServiceState {
 	}
 	return ServiceState{Mode: mode, Limit: state.Limit, Active: state.Active, Background: state.Background, ReservedCritical: state.ReservedCritical, MinConcurrent: min, MaxConcurrent: s.maximum}
 }
+
+// ControllerState contains the last evaluated adaptive window. EvaluatedAt is
+// zero until both interval and sample requirements are met. Decision is one of
+// not_evaluated, hold, increase or decrease. These are observations, not controls.
+type ControllerState struct {
+	Enabled                   bool
+	EvaluatedAt               time.Time
+	Samples                   int
+	P90Ratio, FailureFraction float64
+	PreviousLimit, Limit      int
+	Saturated                 bool
+	Decision, Reason          string
+}
+
+func (s *Service) ControllerSnapshot() ControllerState {
+	if s.controller == nil {
+		return ControllerState{Decision: "not_evaluated", Reason: "fixed_mode"}
+	}
+	e := s.controller.Snapshot()
+	state := ControllerState{Enabled: true, EvaluatedAt: e.EvaluatedAt, Samples: e.Samples,
+		P90Ratio: e.P90Ratio, FailureFraction: e.FailureFraction,
+		PreviousLimit: e.PreviousLimit, Limit: e.Limit, Saturated: e.Saturated,
+		Decision: e.Decision, Reason: e.Reason}
+	if e.EvaluatedAt.IsZero() {
+		state.Decision = "not_evaluated"
+		state.Reason = "insufficient_samples_or_interval"
+	}
+	return state
+}
