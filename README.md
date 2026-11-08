@@ -13,7 +13,7 @@ Use it as Go middleware or as a standalone proxy in front of an HTTP service wri
 Requires Go 1.22 or newer.
 
 ```sh
-go get github.com/HN026/gatewise@v0.3.0
+go get github.com/HN026/gatewise@v0.4.0
 ```
 
 ```go
@@ -43,7 +43,7 @@ The example allows 20 requests running simultaneously across both routes, with b
 ## Standalone proxy
 
 ```sh
-git clone --branch v0.3.0 https://github.com/HN026/gatewise.git
+git clone --branch v0.4.0 https://github.com/HN026/gatewise.git
 cd gatewise
 go build -o bin/gatewise ./cmd/gatewise
 ```
@@ -120,3 +120,9 @@ Public packages are `middleware/` and `metrics/`. Executable wiring is in `cmd/`
 ## License
 
 MIT. Gatewise is an independent project inspired by published overload-control techniques; it is not affiliated with Uber.
+
+### Priority propagation
+
+Optional `ServiceConfig.Priorities` adds 2–8 ordered tiers, compatibility mappings for Critical/Background, trusted HTTP metadata and optional rotating cohorts. Use `priority.With` after authentication and `priority.Transport` with an explicit downstream host allowlist. Missing metadata uses the route default; untrusted supplied metadata returns 403. Cohorts provide consistent ordering within a UTC epoch, not identical admission decisions across services or starvation guarantees. Existing services without tier configuration retain two-class admission. No queue or capacity borrowing is added.
+
+[Priority setup](https://hn026.github.io/gatewise-site/#/installation/priority-propagation) · [Runnable service chain](https://hn026.github.io/gatewise-site/#/examples/priority-chain)
