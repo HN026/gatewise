@@ -13,7 +13,7 @@ Use it as Go middleware or as a standalone proxy in front of an HTTP service wri
 Requires Go 1.22 or newer.
 
 ```sh
-go get github.com/HN026/gatewise@v0.11.0
+go get github.com/HN026/gatewise@v0.11.1
 ```
 
 ```go
@@ -155,7 +155,23 @@ Start with the smallest policy that meets the service's latency and failure goal
 
 A proxy limit covers active proxy requests. After cancellation, a remote handler may still be cleaning up; this is not a hard bound on all remote work. Middleware holds admission until its protected handler returns. Use operation/SQL guards to protect the corresponding backend lifetime.
 
-The [policy comparison](https://hn026.github.io/gatewise-site/#/benchmarks/comparison) runs unprotected traffic, a semaphore, three token-bucket rates and Gatewise against the same PostgreSQL application. It reports useful completions, refusals, failures, pool waiting, recovery and wrapper overhead. These local measurements are not production capacity or a Cinnamon performance comparison. The [tuning guide](https://hn026.github.io/gatewise-site/#/installation/choose-policy) covers concurrency sweeps, reservations, adaptive bounds, deadline-aware waiting and recovery checks.
+The [policy comparison](https://hn026.github.io/gatewise-site/#/benchmarks/hardening) runs seeded, matched traffic through unprotected services, a semaphore, three token-bucket rates and Gatewise against the same PostgreSQL application. It includes reservation sweeps, controlled cancellation and before/after wrapper overhead. It reports useful completions, refusals, failures, pool waiting, recovery and wrapper overhead. These local measurements are not production capacity or a Cinnamon performance comparison. The [tuning guide](https://hn026.github.io/gatewise-site/#/installation/choose-policy) covers concurrency sweeps, reservations, adaptive bounds, deadline-aware waiting and recovery checks.
+
+## Docker proxy
+
+```sh
+docker build --build-arg VERSION=v0.11.1 -t gatewise:v0.11.1 .
+docker run --rm --name gatewise --read-only --cap-drop=ALL \
+  --security-opt=no-new-privileges \
+  --add-host=host.docker.internal:host-gateway \
+  -p 127.0.0.1:8080:8080 \
+  -e GATEWISE_SERVICE_ORDERS_URL=http://host.docker.internal:9090 \
+  gatewise:v0.11.1
+```
+
+The backend address and limits are examples. Use a backend reachable from the container; a container's `127.0.0.1` is its own loopback. The supplied config binds `0.0.0.0:8080`, forwards `/orders`, and requires the upstream URL at runtime. Mount your own JSON at `/etc/gatewise/config.json:ro` for multiple services. Pass runtime variables using Docker's `-e` or `--env-file`; the image disables automatic application `.env` loading. Non-root UID/GID 65532, static binary, CA roots, no runtime shell/toolchain. `/healthz` checks proxy liveness; `/metrics` exposes Prometheus metrics. `docker stop --time 10 gatewise` allows the default five-second graceful shutdown.
+
+Versioned registry image: `ghcr.io/hn026/gatewise:v0.11.1` (`linux/amd64`; build locally for native ARM64). [Docker installation and configuration](https://hn026.github.io/gatewise-site/#/installation/docker).
 
 ## Development
 
