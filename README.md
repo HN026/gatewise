@@ -13,7 +13,7 @@ Use it as Go middleware or as a standalone proxy in front of an HTTP service wri
 Requires Go 1.22 or newer.
 
 ```sh
-go get github.com/HN026/gatewise@v0.8.1
+go get github.com/HN026/gatewise@v0.9.0
 ```
 
 ```go
@@ -53,7 +53,7 @@ See [operation installation and lifetime rules](https://hn026.github.io/gatewise
 ## Standalone proxy
 
 ```sh
-git clone --branch v0.8.1 https://github.com/HN026/gatewise.git
+git clone --branch v0.9.0 https://github.com/HN026/gatewise.git
 cd gatewise
 go build -o bin/gatewise ./cmd/gatewise
 ```
@@ -86,6 +86,18 @@ curl -i http://127.0.0.1:8080/orders/hello
 ```
 
 The second request forwards `/hello` to your backend; its response depends on that handler. Routing uses the longest matching path-segment prefix. Configuration precedence is process environment > dotenv > JSON > defaults. Configuration is resolved at startup. See the [reference](https://hn026.github.io/gatewise-site/#/reference) for adaptive settings, route budgets and environment variables.
+
+## Adaptive profiles
+
+Existing adaptive integrations retain the `legacy` controller. Opt in with `Adaptive: &middleware.AdaptiveConfig{Profile: "stable"}` (or the same field on `operation.AdaptiveConfig`). The proxy accepts `adaptive.profile: "stable"` and `GATEWISE_SERVICE_<NAME>_ADAPTIVE_PROFILE=stable` when adaptive mode is enabled. Explicit bounds and settings remain authoritative.
+
+The stable profile uses real local capacity refusals as growth evidence, requires healthy latency headroom, and protects well-sampled priority-tier tails instead of relying only on aggregate feedback. It records an EWMA of its selected control ratio, uses bounded decrease/growth steps, and vetoes growth when a matching signal ceiling is binding. Conservative startup defaults remain minimum = reservation + 1, initial = minimum, interval = 1 second, minimum samples = 10. A bounded local interval offset helps diversify timing; it is not cross-instance coordination.
+
+Sparse windows can be reported as holds with at least three completions, four nominal intervals elapsed and no refused local demand. Actual overload keeps the configured sample requirement. Idle reset clears stale feedback without freeing running work or resetting the learned limit. Controller snapshots, adjustment logs and bounded Prometheus metrics distinguish raw aggregate p90 from the selected control ratio, pending samples, sparse holds and external constraints.
+
+[Profile setup and exact rules](https://hn026.github.io/gatewise-site/#/installation/stable-adaptive) · [Repeated controller evaluation](https://hn026.github.io/gatewise-site/#/benchmarks/adaptation)
+
+The preset does not learn a production ceiling or relax your latency targets. Per-tier tails need at least 10 samples; histograms are bucket estimates, not exact percentiles. Operator floors, shared dependencies and workload changes can still prevent a latency goal from being met. Existing `legacy` behavior remains the rollback option.
 
 ## Tenant isolation
 
