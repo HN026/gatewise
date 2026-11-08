@@ -212,6 +212,9 @@ func (p *Policy) Resolve(r *http.Request, fallback string, now time.Time) (*http
 // Inject removes caller metadata and writes only policy-resolved context metadata.
 // The caller must select a trusted outbound destination before calling this.
 func Inject(r *http.Request) {
+	if r.Header == nil {
+		r.Header = make(http.Header)
+	}
 	r.Header.Del(Header)
 	if m, ok := FromContext(r.Context()); ok && m.resolved {
 		key := m.cohort

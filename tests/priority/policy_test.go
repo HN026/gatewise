@@ -89,6 +89,11 @@ func TestOutboundDestinationAndClone(t *testing.T) {
 	}
 	r.URL.Host = "external:9000"
 	transport.RoundTrip(r)
+	r.Header = nil
+	priority.Inject(r)
+	if !strings.HasPrefix(r.Header.Get(priority.Header), "v1;urgent;") {
+		t.Fatal("nil-header injection failed")
+	}
 }
 func TestPolicyValidation(t *testing.T) {
 	for _, mutate := range []func(*priority.Config){func(c *priority.Config) { c.Tiers[1].Name = "urgent" }, func(c *priority.Config) { c.Tiers[2].Reserved = 1 }, func(c *priority.Config) { c.CriticalTier = "absent" }, func(c *priority.Config) { c.TrustedProxies = []string{"bad"} }, func(c *priority.Config) { c.Cohorts.Seed = "short" }, func(c *priority.Config) { c.Cohorts.Rotation = time.Millisecond }} {
