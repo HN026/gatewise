@@ -13,7 +13,7 @@ Use it as Go middleware or as a standalone proxy in front of an HTTP service wri
 Requires Go 1.22 or newer.
 
 ```sh
-go get github.com/HN026/gatewise@v0.11.1
+go get github.com/HN026/gatewise@v1.0.0
 ```
 
 ```go
@@ -50,10 +50,18 @@ The example allows 20 requests running simultaneously across both routes, with b
 
 See [operation installation and lifetime rules](https://hn026.github.io/gatewise-site/#/installation/operation-setup) and the [runnable SQL/worker/standby example](https://hn026.github.io/gatewise-site/#/examples/operation-example). Register either an HTTP guard or operation engine with `metrics.Register`; work metrics distinguish `http` and `operation` without adding layered counts as end-to-end throughput.
 
+## Compatibility and ownership
+
+The v1 contract covers the exported `decision`, `metrics`, `middleware`, `operation`, `postgres`, `priority`, `regulator` and `sqlguard` APIs, documented proxy configuration, CLI flags and HTTP rejection fields. Use constructors and keyed configuration literals. Additive optional fields, diagnostic reasons and metrics may appear in v1.x; accept unknown response fields and do not depend on exact error/log text. `internal/` packages are not public APIs. CI checks the frozen exported API and runs race tests on Linux AMD64/ARM64 with Go 1.22 and the current stable toolchain. Go 1.22 is the source minimum; deploy with a currently supported, patched Go toolchain. Local macOS ARM64 validation uses current Go.
+
+Reuse one engine for work sharing a budget, and do not copy a constructed engine, service, permit or SQL adapter. Applications own servers, authentication, HTTP/driver timeouts, SQL pools and collector cancellation. Always finish permits and close rows; cancellation cannot stop arbitrary running work. Collectors must honor cancellation; one uncooperative provider can retain one worker per signal. Limits and waiting queues are process-local. Adding replicas multiplies independent budgets unless you size them together.
+
+[Compatibility details](https://hn026.github.io/gatewise-site/#/reference/compatibility) · [Deployment and rollback](https://hn026.github.io/gatewise-site/#/installation/operating)
+
 ## Standalone proxy
 
 ```sh
-git clone --branch v0.9.0 https://github.com/HN026/gatewise.git
+git clone --branch v1.0.0 https://github.com/HN026/gatewise.git
 cd gatewise
 go build -o bin/gatewise ./cmd/gatewise
 ```
@@ -160,18 +168,18 @@ The [policy comparison](https://hn026.github.io/gatewise-site/#/benchmarks/harde
 ## Docker proxy
 
 ```sh
-docker build --build-arg VERSION=v0.11.1 -t gatewise:v0.11.1 .
+docker build --build-arg VERSION=v1.0.0 -t gatewise:v1.0.0 .
 docker run --rm --name gatewise --read-only --cap-drop=ALL \
   --security-opt=no-new-privileges \
   --add-host=host.docker.internal:host-gateway \
   -p 127.0.0.1:8080:8080 \
   -e GATEWISE_SERVICE_ORDERS_URL=http://host.docker.internal:9090 \
-  gatewise:v0.11.1
+  gatewise:v1.0.0
 ```
 
 The backend address and limits are examples. Use a backend reachable from the container; a container's `127.0.0.1` is its own loopback. The supplied config binds `0.0.0.0:8080`, forwards `/orders`, and requires the upstream URL at runtime. Mount your own JSON at `/etc/gatewise/config.json:ro` for multiple services. Pass runtime variables using Docker's `-e` or `--env-file`; the image disables automatic application `.env` loading. Non-root UID/GID 65532, static binary, CA roots, no runtime shell/toolchain. `/healthz` checks proxy liveness; `/metrics` exposes Prometheus metrics. `docker stop --time 10 gatewise` allows the default five-second graceful shutdown.
 
-Versioned registry image: `ghcr.io/hn026/gatewise:v0.11.1` (`linux/amd64`; build locally for native ARM64). [Docker installation and configuration](https://hn026.github.io/gatewise-site/#/installation/docker).
+Versioned registry image: `ghcr.io/hn026/gatewise:v1.0.0` (`linux/amd64`; build locally for native ARM64). [Docker installation and configuration](https://hn026.github.io/gatewise-site/#/installation/docker).
 
 ## Development
 
