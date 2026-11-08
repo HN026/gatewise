@@ -163,7 +163,11 @@ func (s *Service) Middleware(priority Priority, next http.Handler, options ...Ha
 		completed := false
 		var result httpsnoop.Metrics
 		defer func() { permit.Finish(operation.Outcome{StatusCode: result.Code, Panicked: !completed}) }()
-		r = r.WithContext(resolvedCost(permit.Context(), permit.Cost()))
+		workContext := permit.Context()
+		if resolveCost != nil {
+			workContext = resolvedCost(workContext, permit.Cost())
+		}
+		r = r.WithContext(workContext)
 		if r.Context().Err() != nil {
 			completed = true
 			return
