@@ -179,7 +179,7 @@ docker run --rm --name gatewise --read-only --cap-drop=ALL \
 
 The backend address and limits are examples. Use a backend reachable from the container; a container's `127.0.0.1` is its own loopback. The supplied config binds `0.0.0.0:8080`, forwards `/orders`, and requires the upstream URL at runtime. Mount your own JSON at `/etc/gatewise/config.json:ro` for multiple services. Pass runtime variables using Docker's `-e` or `--env-file`; the image disables automatic application `.env` loading. Non-root UID/GID 65532, static binary, CA roots, no runtime shell/toolchain. `/healthz` checks proxy liveness; `/metrics` exposes Prometheus metrics. `docker stop --time 10 gatewise` allows the default five-second graceful shutdown.
 
-Versioned registry image: `ghcr.io/hn026/gatewise:v1.0.0` (`linux/amd64`; build locally for native ARM64). [Docker installation and configuration](https://hn026.github.io/gatewise-site/#/installation/docker).
+Versioned registry image: `ghcr.io/hn026/gatewise:v1.0.0` (`linux/amd64` and `linux/arm64`). [Docker installation and configuration](https://hn026.github.io/gatewise-site/#/installation/docker).
 
 ## Development
 
