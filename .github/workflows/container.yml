@@ -73,6 +73,8 @@ jobs:
           cache-dependency-path: .release-tools/trivy/go.sum
       - name: Build native scanner from verified source
         working-directory: .release-tools/trivy
+        env:
+          GOEXPERIMENT: jsonv2
         run: go build -ldflags '-X github.com/aquasecurity/trivy/pkg/version/app.ver=0.70.0' -o "$RUNNER_TEMP/trivy" ./cmd/trivy
       - name: Scan final runtime image
         env:
