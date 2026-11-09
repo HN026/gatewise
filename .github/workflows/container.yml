@@ -64,13 +64,17 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
         run: |
+          # SHA-256 values are pinned from the official v0.70.0 release asset metadata.
           PLATFORM=Linux-64bit
-          if [ "$ARCH" = arm64 ]; then PLATFORM=Linux-ARM64; fi
+          SHA256=8b4376d5d6befe5c24d503f10ff136d9e0c49f9127a4279fd110b727929a5aa9
+          if [ "$ARCH" = arm64 ]; then
+            PLATFORM=Linux-ARM64
+            SHA256=2f6bb988b553a1bbac6bdd1ce890f5e412439564e17522b88a4541b4f364fc8d
+          fi
           ARCHIVE="trivy_0.70.0_${PLATFORM}.tar.gz"
           BASE=https://github.com/aquasecurity/trivy/releases/download/v0.70.0
           curl --fail --location --retry 3 --retry-all-errors "$BASE/$ARCHIVE" -o "$ARCHIVE"
-          curl --fail --location --retry 3 --retry-all-errors "$BASE/trivy_0.70.0_checksums.txt" -o checksums.txt
-          grep " $ARCHIVE$" checksums.txt | sha256sum --check --strict
+          echo "$SHA256  $ARCHIVE" | sha256sum --check --strict
           tar -xzf "$ARCHIVE" trivy
           ./trivy --version
       - name: Scan final runtime image
