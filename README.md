@@ -2,19 +2,32 @@
 
 # Gatewise
 
-Process-local admission control for HTTP services, Go worker jobs and SQL operations. Gatewise bounds concurrent work, reserves capacity for critical traffic, and optionally adjusts admission using latency and error feedback.
+When a dependency slows down, requests take longer and more work stays in flight. Gatewise bounds concurrent work, reserves capacity for important requests, and can adjust admission using latency, errors and configured resource signals.
 
-Use it as Go middleware or as a standalone proxy in front of an HTTP service written in any language.
+Use it as Go middleware, as a standalone HTTP proxy for services written in any language, or around Go worker jobs and SQL operations. Limits apply to one engine in one process.
 
-[Documentation](https://hn026.github.io/gatewise-site/) · [Installation](https://hn026.github.io/gatewise-site/#/installation) · [Examples](https://hn026.github.io/gatewise-site/#/examples) · [Benchmarks](https://hn026.github.io/gatewise-site/#/benchmarks)
+[Documentation](https://hn026.github.io/gatewise-site/) · [Installation](https://hn026.github.io/gatewise-site/#/installation) · [Examples](https://hn026.github.io/gatewise-site/#/examples) · [Benchmarks](https://hn026.github.io/gatewise-site/#/benchmarks) · [Versions](https://hn026.github.io/gatewise-site/#/versions)
+
+## Choose an integration
+
+| Integration | What it protects | Where to use it |
+| --- | --- | --- |
+| Go middleware | Synchronous HTTP handlers, until they return | Inside a Go service |
+| HTTP proxy | Active proxy requests | In front of an HTTP service in any language |
+| Operation engine | Work until its callback returns or its permit is finished | Go workers and other explicitly owned work |
+| SQL adapter | Statements, row streams and transactions through their documented lifetimes | Around an existing `database/sql` pool |
+
+A fixed concurrency ceiling is the starting point. Add priorities, tenant policies, adaptation or waiting only when the workload needs them. A classless semaphore may be sufficient for a simple ceiling; a rate limiter serves a different purpose by enforcing requests per time interval. See the [policy selection and tuning guide](https://hn026.github.io/gatewise-site/#/installation/choose-policy).
 
 ## Go middleware
 
-Requires Go 1.22 or newer.
+Requires Go 1.22 or newer. Use a currently supported, patched Go toolchain for deployment.
 
 ```sh
 go get github.com/HN026/gatewise@v1.0.0
 ```
+
+Add a guard to routes that share capacity:
 
 ```go
 import "github.com/HN026/gatewise/middleware"
@@ -34,31 +47,13 @@ mux.Handle("POST /reindex", guard.Middleware(
 ))
 ```
 
-This is an integration fragment: `mux` is your `http.ServeMux` and `checkout`/`reindex` are application handlers. See the [complete example](https://hn026.github.io/gatewise-site/#/installation).
+This is an integration fragment: `mux` is your `http.ServeMux`, `checkout` and `reindex` are your handlers, and the enclosing application imports `log` and `net/http`. After adding the integration, run `go mod tidy`, then build or start your service. A [complete application example](https://hn026.github.io/gatewise-site/#/installation) is available in the installation guide.
 
-After adding the imports and handlers to your application, run `go mod tidy` to resolve the packages it uses, then build or start your service.
+Here, at most 20 protected requests execute at once across both routes. Background work can use at most 15 slots, leaving five reserved for critical work. These are configurable example values, not a requests-per-second quota. Reuse one guard for routes sharing that budget. Excess requests receive structured HTTP 503 responses. Optional waiting can hold eligible requests briefly before execution capacity becomes available.
 
-The example allows 20 requests running simultaneously across both routes, with background work limited to 15. This is concurrency, not requests per second. Reuse one guard for routes sharing capacity. Excess requests receive structured HTTP 503 responses. Limits are configurable and apply per process.
+## Standalone HTTP proxy
 
-## Jobs and SQL operations
-
-`operation.New` creates the shared admission engine without an HTTP handler. Use `Engine.Do(ctx, operation.Request{Priority: operation.Background}, fn)` around a job, or `Begin`/`Permit.Context`/`Finish` for an explicitly owned lifetime. Cancellation does not release work still running. Use separate engines for HTTP, workers and databases; nesting the same engine through its active context returns `operation.ErrNested`.
-
-`sqlguard.New(db, engine, metadata)` wraps an existing `database/sql` pool. Statements hold admission through completion, rows through Close/terminal iteration, and transactions through Commit/Rollback. Always close rows; use transaction methods and `tx.Context()` inside `InTx`. Transaction control retains capacity through driver cleanup and may wait for configured driver/network timeouts. The application owns the driver and pool.
-
-`regulator.SQLPool` samples finite-pool utilization. Opt-in `regulator.NewSQLPoolContention` distinguishes occupancy from new pool waits: it emits 0/1 pressure from WaitCount deltas and clears only after a configurable quiet interval with a nonfull pool. Historical waits before construction are ignored. It is not queue depth or an availability check. Existing providers and controller defaults are unchanged. `postgres.NewReplication` observes one named physical standby from a separate primary monitoring pool, distinguishing idle catch-up from real WAL byte backlog and unavailable data. These are application adapters, not PostgreSQL-engine enforcement or cluster-wide limits.
-
-See [operation installation and lifetime rules](https://hn026.github.io/gatewise-site/#/installation/operation-setup) and the [runnable SQL/worker/standby example](https://hn026.github.io/gatewise-site/#/examples/operation-example). Register either an HTTP guard or operation engine with `metrics.Register`; work metrics distinguish `http` and `operation` without adding layered counts as end-to-end throughput.
-
-## Compatibility and ownership
-
-The v1 contract covers the exported `decision`, `metrics`, `middleware`, `operation`, `postgres`, `priority`, `regulator` and `sqlguard` APIs, documented proxy configuration, CLI flags and HTTP rejection fields. Use constructors and keyed configuration literals. Additive optional fields, diagnostic reasons and metrics may appear in v1.x; accept unknown response fields and do not depend on exact error/log text. `internal/` packages are not public APIs. CI checks the frozen exported API and runs race tests on Linux AMD64/ARM64 with Go 1.22 and the current stable toolchain. Go 1.22 is the source minimum; deploy with a currently supported, patched Go toolchain. Local macOS ARM64 validation uses current Go.
-
-Reuse one engine for work sharing a budget, and do not copy a constructed engine, service, permit or SQL adapter. Applications own servers, authentication, HTTP/driver timeouts, SQL pools and collector cancellation. Always finish permits and close rows; cancellation cannot stop arbitrary running work. Collectors must honor cancellation; one uncooperative provider can retain one worker per signal. Limits and waiting queues are process-local. Adding replicas multiplies independent budgets unless you size them together.
-
-[Compatibility details](https://hn026.github.io/gatewise-site/#/reference/compatibility) · [Deployment and rollback](https://hn026.github.io/gatewise-site/#/installation/operating)
-
-## Standalone proxy
+Build the released proxy:
 
 ```sh
 git clone --branch v1.0.0 https://github.com/HN026/gatewise.git
@@ -85,55 +80,93 @@ Save a configuration such as `configs/orders.json`:
 }
 ```
 
-Addresses and limits above are examples. Point `upstream_url` at your running backend, then start:
+Addresses and limits are examples. Point `upstream_url` at your running backend. Validate the configuration, start the proxy, then check a route:
 
 ```sh
+./bin/gatewise -check-config -config configs/orders.json -env-file ""
 ./bin/gatewise -config configs/orders.json -env-file ""
+```
+
+In another terminal:
+
+```sh
 curl -i http://127.0.0.1:8080/healthz
 curl -i http://127.0.0.1:8080/orders/hello
 ```
 
-The second request forwards `/hello` to your backend; its response depends on that handler. Routing uses the longest matching path-segment prefix. Configuration precedence is process environment > dotenv > JSON > defaults. Configuration is resolved at startup. See the [reference](https://hn026.github.io/gatewise-site/#/reference) for adaptive settings, route budgets and environment variables.
+The second request forwards `/hello` to your backend; its response depends on that handler. Routing uses the longest matching path-segment prefix. Add entries under `services` and `routes` to protect multiple backends.
 
-## Adaptive profiles
+Configuration is resolved at startup, with precedence: process environment > dotenv > JSON > defaults. The commands above disable automatic dotenv loading with `-env-file ""`; process environment overrides still apply. Configuration validation opens no listener and does not contact upstreams. See the [configuration reference](https://hn026.github.io/gatewise-site/#/reference) for environment variables and policy settings.
 
-Existing adaptive integrations retain the `legacy` controller. Opt in with `Adaptive: &middleware.AdaptiveConfig{Profile: "stable"}` (or the same field on `operation.AdaptiveConfig`). The proxy accepts `adaptive.profile: "stable"` and `GATEWISE_SERVICE_<NAME>_ADAPTIVE_PROFILE=stable` when adaptive mode is enabled. Explicit bounds and settings remain authoritative.
+### Run with Docker
 
-The stable profile uses real local capacity refusals as growth evidence, requires healthy latency headroom, and protects well-sampled priority-tier tails instead of relying only on aggregate feedback. It records an EWMA of its selected control ratio, uses bounded decrease/growth steps, and vetoes growth when a matching signal ceiling is binding. Conservative startup defaults remain minimum = reservation + 1, initial = minimum, interval = 1 second, minimum samples = 10. A bounded local interval offset helps diversify timing; it is not cross-instance coordination.
-
-Sparse windows can be reported as holds with at least three completions, four nominal intervals elapsed and no refused local demand. Actual overload keeps the configured sample requirement. Idle reset clears stale feedback without freeing running work or resetting the learned limit. Controller snapshots, adjustment logs and bounded Prometheus metrics distinguish raw aggregate p90 from the selected control ratio, pending samples, sparse holds and external constraints.
-
-[Profile setup and exact rules](https://hn026.github.io/gatewise-site/#/installation/stable-adaptive) · [Repeated controller evaluation](https://hn026.github.io/gatewise-site/#/benchmarks/adaptation)
-
-The preset does not learn a production ceiling or relax your latency targets. Per-tier tails need at least 10 samples; histograms are bucket estimates, not exact percentiles. Operator floors, shared dependencies and workload changes can still prevent a latency goal from being met. Existing `legacy` behavior remains the rollback option.
-
-## Tenant isolation
-
-Optional `ServiceConfig.Tenants` adds per-tenant concurrency caps inside each service budget. Supply a resolver using your authenticated principal. The proxy accepts a dedicated identity header only from configured immediate-peer CIDRs; the ingress must authenticate and overwrite it. Forwarded headers do not establish trust.
-
-Tracking has a configurable bound and idle expiry. Missing identities and registry exhaustion reject by default; explicit bounded shared-bucket policies are available. Active entries are never evicted. Tenant rejections do not feed adaptive latency or failure observations. Limits apply per guard and process, not across replicas.
-
-`guard.TenantSnapshot()` and aggregate Prometheus metrics expose tracking and rejection reasons without identity labels. See the [tenant integration guide](https://hn026.github.io/gatewise-site/#/installation/tenant-isolation) and [Postman example](https://hn026.github.io/gatewise-site/#/examples/tenant-isolation).
-
-## Metrics and operations
-
-The proxy exposes `/healthz` and Prometheus `/metrics` outside admission. Go applications can register a guard using `metrics.Register` with their own Prometheus registry. A Grafana dashboard and optional local monitoring stack are included under `deploy/observability/`.
-
-Adaptive consumers can inspect `guard.ControllerSnapshot()` for the last evaluated sample count, latency ratio, failure fraction and decision, including holds. The Prometheus collector and Grafana dashboard expose the same observations.
-
-Validate proxy configuration offline before deployment:
+The published proxy image supports `linux/amd64` and `linux/arm64`:
 
 ```sh
-./bin/gatewise -check-config -config configs/orders.json -env-file ""
+docker pull ghcr.io/hn026/gatewise:v1.0.0
+docker run --rm --name gatewise --read-only --cap-drop=ALL \
+  --security-opt=no-new-privileges \
+  --add-host=host.docker.internal:host-gateway \
+  -p 127.0.0.1:8080:8080 \
+  -e GATEWISE_SERVICE_ORDERS_URL=http://host.docker.internal:9090 \
+  ghcr.io/hn026/gatewise:v1.0.0
 ```
 
-This exits without opening a listener or contacting upstreams. It does not verify backend availability.
+The address is an example: use a backend reachable from the container. A container’s `127.0.0.1` is its own loopback; on Linux, a host backend bound only to loopback is not reachable through the bridge gateway. For services on the same container network, use the backend’s service name.
 
-Slots are held until synchronous handlers return. Immediate rejection is the default; optional bounded waiting is available. There is no preemption. Adaptive mode uses completed-request feedback within configured bounds; it does not directly measure database capacity. Multiple replicas have independent budgets. Applications own retry policy, dependency timeouts, authentication and TLS. Long-lived streaming and WebSocket support are outside the current scope.
+The supplied configuration listens on `0.0.0.0:8080` and forwards `/orders`. Mount your own JSON at `/etc/gatewise/config.json:ro` for other routes or multiple services. Pass runtime variables with Docker’s `-e` or `--env-file`; automatic application `.env` loading is disabled. The image runs as UID/GID 65532 and contains a static binary and CA roots, with no shell or Go toolchain.
 
-## Optional bounded waiting
+To build locally from the cloned repository:
 
-Set `ServiceConfig.Queue` (or `operation.Config.Queue`) to opt in:
+```sh
+docker build --build-arg VERSION=v1.0.0 -t gatewise:v1.0.0 .
+```
+
+`docker stop --time 10 gatewise` allows the default five-second graceful shutdown. The [Docker guide](https://hn026.github.io/gatewise-site/#/installation/docker) covers mounted configuration, Podman, image digests, SBOMs and provenance. Middleware users include Gatewise in their own application image.
+
+## Worker jobs and SQL operations
+
+`operation.New` creates an admission engine without HTTP. Use `Engine.Do(ctx, request, fn)` around a job, or `Begin`, `Permit.Context` and `Finish` when the caller owns the lifetime explicitly. Cancellation does not release work that is still running. Use separate engines for distinct HTTP, worker and database budgets; nesting the same engine through its active context returns `operation.ErrNested`.
+
+`sqlguard.New(db, engine, metadata)` wraps an existing `database/sql` pool:
+
+- Statements hold admission through completion.
+- Row streams hold admission through `Close` or terminal iteration.
+- Transactions hold admission through `Commit` or `Rollback`, including driver cleanup.
+
+Always close rows and use transaction methods with `tx.Context()` inside `InTx`. The application owns the driver, pool and driver/network timeouts. See the [operation and SQL installation guide](https://hn026.github.io/gatewise-site/#/installation/operation-setup) and [runnable SQL/worker example](https://hn026.github.io/gatewise-site/#/examples/operation-example).
+
+## Optional admission policies
+
+Existing integrations retain their defaults. Immediate refusal, fixed concurrency and two-class critical/background admission are available without configuring the policies below.
+
+| Policy | What it adds | Setup |
+| --- | --- | --- |
+| Adaptive concurrency | Adjusts the execution limit within configured bounds using completed-work feedback | [Adaptive profiles](https://hn026.github.io/gatewise-site/#/installation/stable-adaptive) |
+| Priority tiers and propagation | Ordered tiers, route defaults and trusted downstream metadata | [Priority integration](https://hn026.github.io/gatewise-site/#/installation/priority-propagation) |
+| Tenant isolation | Per-tenant concurrency caps with bounded identity tracking | [Tenant integration](https://hn026.github.io/gatewise-site/#/installation/tenant-isolation) |
+| Tenant sharing | Target shares and bounded borrowing of spare capacity | [Allocation rules](https://hn026.github.io/gatewise-site/#/installation/tenant-sharing) |
+| Resource signals | Cached overload observations with explicit freshness and failure policies | [Signal setup](https://hn026.github.io/gatewise-site/#/installation/signal-setup) |
+| Resource budgets | Planned logical write-byte costs and concurrent work per bounded, hashed key | [Resource setup](https://hn026.github.io/gatewise-site/#/installation/resource-setup) |
+| Bounded waiting | A separate, deadline-aware waiting budget when execution capacity is temporarily unavailable | [Queue setup](https://hn026.github.io/gatewise-site/#/installation/bounded-waiting) |
+
+### Adaptive concurrency
+
+Adaptive mode is opt-in. Existing adaptive integrations retain the `legacy` profile; choose `Adaptive: &middleware.AdaptiveConfig{Profile: "stable"}` for the stable profile, or the corresponding `operation.AdaptiveConfig`. The proxy uses an enabled `adaptive` configuration with `profile: "stable"`. Explicit bounds and settings remain authoritative.
+
+The stable profile requires healthy latency headroom before growth, uses local capacity refusals as demand evidence, and protects sufficiently sampled priority-tier tails. Matching resource ceilings can veto growth. Snapshots, adjustment logs and metrics explain adjustments and holds. Configured floors, intrinsic operation latency and shared dependencies can still prevent a latency target from being met. See the [profile rules and examples](https://hn026.github.io/gatewise-site/#/installation/stable-adaptive).
+
+### Trusted identity, priorities and signals
+
+Resolve tenants and priorities from authenticated, server-owned information. The proxy trusts configured identity/priority metadata only from configured immediate peers; ingress must authenticate callers and overwrite reserved headers. Forwarded IP headers do not establish trust. Go integrations use `priority.With` and an explicitly allowlisted `priority.Transport` for propagation.
+
+Tenant tracking is bounded and idle entries expire; active entries are never evicted. Hard tenant caps remain the default. Optional sharing permits borrowing up to separate total ceilings while protecting active/recent demand. Priority cohorts provide consistent ordering within an epoch, not identical admission decisions across services or a starvation guarantee.
+
+`regulator` providers can observe Go runtime pressure, SQL-pool utilization and new SQL-pool contention. `postgres.NewReplication` observes one named physical standby from a separate primary monitoring pool. These observations are application adapters, not database-engine enforcement or cluster-wide limits. Start signal decisions in observe mode and choose freshness and unavailable-data behavior before enforcement. Resource costs must come from a trusted operation planner.
+
+### Bounded waiting
+
+Waiting is disabled by default. For example:
 
 ```go
 Queue: &middleware.QueueConfig{
@@ -143,43 +176,43 @@ Queue: &middleware.QueueConfig{
 },
 ```
 
-These are example values. Waiting slots and execution concurrency are separate budgets. FIFO within a tier, priority preference and aging choose the next eligible request; hard execution reservations still apply. Only local capacity refusals wait. Every selected request rechecks policies and holds no execution, tenant or resource permit while waiting. The earlier caller deadline wins; full/reserved/expired waits return explicit reasons. Existing work is never preempted or released just because its context cancels.
+These are example values. Waiting and execution are separate budgets. Only local capacity refusals wait; every selected request rechecks policy and holds no execution, tenant or resource permit while waiting. FIFO within a tier, priority preference and aging determine eligibility; hard execution reservations still apply. An earlier caller deadline wins. Full, reserved and expired waits have explicit rejection reasons.
 
-HTTP queues buffer known-length bodies up to 64 KiB before admission so HTTP/1.1 disconnects are observable while waiting. Configure `http.Server.ReadTimeout` to bound upload preparation. Large/unknown bodies keep streaming and fail fast instead of waiting. `QueueBodyMaxBytes` customizes buffering (-1 disables it; maximum 1 MiB). Proxy configuration uses `queue.max_body_bytes` and requires a positive top-level `read_timeout` while buffering is enabled. `Request.NoWait` opts a native operation out of waiting while retaining queue order.
+HTTP waiting buffers eligible known-length bodies, by default up to 64 KiB, so HTTP/1.1 disconnects can be observed. Configure `http.Server.ReadTimeout` to bound upload preparation; proxy buffering requires a positive `read_timeout`. Large or unknown-length bodies stream and fail fast instead of waiting. See the [body buffering and opt-out rules](https://hn026.github.io/gatewise-site/#/installation/bounded-waiting) before enabling queues.
 
-Queue time is reported separately from processing feedback. Assess useful completions against the whole response budget, including preparation and waiting. A queue does not add capacity or guarantee lower-tier progress under unavailable execution capacity. It is in memory, process-local and non-durable. Disable it by removing Queue / the JSON queue object, or setting the service's `QUEUE_ENABLED=false` environment override and restarting.
+Waiting does not add execution capacity or guarantee lower-tier progress. Queues are in memory, process-local and non-durable. Queue time is reported separately from processing feedback; assess useful completions against the whole response budget.
 
-[Setup and exact policy](https://hn026.github.io/gatewise-site/#/installation/bounded-waiting) · [Database-backed comparison](https://hn026.github.io/gatewise-site/#/benchmarks/queue)
+## Metrics and operations
 
-## Demo example and measurements
+The proxy exposes `/healthz` and Prometheus `/metrics` outside admission. Health reports proxy liveness, not backend availability. Go applications register guards or operation engines with `metrics.Register` and their own Prometheus registry. A Grafana dashboard and optional local monitoring stack are in `deploy/observability/`.
 
-The separate [documentation repository](https://github.com/HN026/gatewise-site) provides a source-only commerce example: orders, catalog and inventory services, three PostgreSQL databases, and a portable Postman collection. Both proxy and middleware modes are supported. [Download and run the demo example](https://hn026.github.io/gatewise-site/#/examples).
+`ControllerSnapshot()` exposes evaluated samples, latency ratio, failure fraction and the last decision, including holds. Use metrics to distinguish execution pressure, waiting, tenant refusals and binding resource signals. HTTP and operation counts describe different layers; adding them does not give end-to-end throughput.
 
-[Published benchmarks](https://hn026.github.io/gatewise-site/#/benchmarks) report sustained SQL traffic, overload, injected database failures and recovery. Results separate successful work within a latency budget, successful-request p95, rejection rates and SQL-pool waits. These controlled local experiments do not establish production capacity. The older synthetic runner remains available in `benchmarks/` for custom HTTP fixtures.
+Applications own authentication, TLS, retry policy, timeouts and graceful shutdown. Stop intake before shutdown, give active work time to finish, and cancel collectors and close database resources in the application. Providers must honor cancellation; an uncooperative provider can retain one worker per signal. See [reading metrics](https://hn026.github.io/gatewise-site/#/metrics/reading-metrics) and [deployment, rollout and rollback](https://hn026.github.io/gatewise-site/#/installation/operating).
 
-## Choose and tune a policy
+## Guarantees and boundaries
 
-Start with the smallest policy that meets the service's latency and failure goals. A rate limiter enforces a request quota; a classless semaphore may be sufficient for a stable concurrency ceiling. Gatewise adds priority reservations, adaptive limits and optional bounded waiting when those are useful. Rate limits can be used alongside admission control.
+- Limits and queues belong to one engine in one process. Additional replicas multiply independent budgets unless you size them against shared dependency capacity.
+- Middleware holds admission until its synchronous handler returns. A canceled proxy request can finish while remote work is still cleaning up. Use operation or SQL guards where that backend lifetime needs protection.
+- There is no preemption. Cancellation cannot force arbitrary running code or a driver to stop; permits remain held through their protected lifetime.
+- Reuse an engine for work sharing a budget. Do not copy constructed services, engines, permits or SQL adapters. Always finish permits and close rows.
+- Adaptation operates within configured bounds; it does not discover a universal production ceiling. Long-lived streaming and WebSockets are outside the current scope.
 
-A proxy limit covers active proxy requests. After cancellation, a remote handler may still be cleaning up; this is not a hard bound on all remote work. Middleware holds admission until its protected handler returns. Use operation/SQL guards to protect the corresponding backend lifetime.
+## Demo example and benchmarks
 
-The [policy comparison](https://hn026.github.io/gatewise-site/#/benchmarks/hardening) runs seeded, matched traffic through unprotected services, a semaphore, three token-bucket rates and Gatewise against the same PostgreSQL application. It includes reservation sweeps, controlled cancellation and before/after wrapper overhead. It reports useful completions, refusals, failures, pool waiting, recovery and wrapper overhead. These local measurements are not production capacity or a Cinnamon performance comparison. The [tuning guide](https://hn026.github.io/gatewise-site/#/installation/choose-policy) covers concurrency sweeps, reservations, adaptive bounds, deadline-aware waiting and recovery checks.
+The separate [documentation repository](https://github.com/HN026/gatewise-site) provides a source-only commerce example: orders, catalog and inventory services backed by PostgreSQL, with Postman collections. It supports middleware and proxy deployments. [Download and run the demo example](https://hn026.github.io/gatewise-site/#/examples).
 
-## Docker proxy
+The [benchmarks](https://hn026.github.io/gatewise-site/#/benchmarks) explain the problem, comparison, results and tradeoffs for each experiment. Reports retain successful work within a latency budget, successful-request latency, refusals, failures, pool waiting and recovery. The v1 sustained protocol passed eight three-minute runs across local and Linux environments: 1,232,800 requests and 120 checks. The separate short exploratory recovery miss remains visible.
 
-```sh
-docker build --build-arg VERSION=v1.0.0 -t gatewise:v1.0.0 .
-docker run --rm --name gatewise --read-only --cap-drop=ALL \
-  --security-opt=no-new-privileges \
-  --add-host=host.docker.internal:host-gateway \
-  -p 127.0.0.1:8080:8080 \
-  -e GATEWISE_SERVICE_ORDERS_URL=http://host.docker.internal:9090 \
-  gatewise:v1.0.0
-```
+These controlled experiments do not establish production capacity or a Cinnamon performance comparison. Use the [matched policy comparison](https://hn026.github.io/gatewise-site/#/benchmarks/hardening) to assess the value beyond a semaphore, and the [sustained validation](https://hn026.github.io/gatewise-site/#/benchmarks/reliability) to inspect cleanup and recovery. The older synthetic HTTP runner remains in `benchmarks/` for custom fixtures.
 
-The backend address and limits are examples. Use a backend reachable from the container; a container's `127.0.0.1` is its own loopback. The supplied config binds `0.0.0.0:8080`, forwards `/orders`, and requires the upstream URL at runtime. Mount your own JSON at `/etc/gatewise/config.json:ro` for multiple services. Pass runtime variables using Docker's `-e` or `--env-file`; the image disables automatic application `.env` loading. Non-root UID/GID 65532, static binary, CA roots, no runtime shell/toolchain. `/healthz` checks proxy liveness; `/metrics` exposes Prometheus metrics. `docker stop --time 10 gatewise` allows the default five-second graceful shutdown.
+## Versions and compatibility
 
-Versioned registry image: `ghcr.io/hn026/gatewise:v1.0.0` (`linux/amd64` and `linux/arm64`). [Docker installation and configuration](https://hn026.github.io/gatewise-site/#/installation/docker).
+Install a tagged release and review its [upgrade notes](https://hn026.github.io/gatewise-site/#/versions). The v1 contract covers the exported `decision`, `metrics`, `middleware`, `operation`, `postgres`, `priority`, `regulator` and `sqlguard` APIs, documented proxy configuration, CLI flags and HTTP rejection fields. `internal/` packages are not public APIs.
+
+Use constructors and keyed configuration literals. v1.x may add optional fields, diagnostic reasons and metrics; accept unknown response fields and avoid depending on exact error or log text. CI checks the frozen exported API and runs race tests on Linux AMD64/ARM64 with Go 1.22 and current stable Go. See the [compatibility contract](https://hn026.github.io/gatewise-site/#/reference/compatibility).
+
+The [development timeline](https://hn026.github.io/gatewise-site/#/versions/development) groups the work across approximately 15 October–9 November 2026. Its milestone dates are approximate; the [release history](https://hn026.github.io/gatewise-site/#/versions/release-history) records actual publication dates. Published tags and validation records retain their original identities.
 
 ## Development
 
@@ -189,22 +222,8 @@ go vet ./...
 go build ./cmd/gatewise
 ```
 
-Public packages include `operation/`, `middleware/`, `sqlguard/`, `decision/`, `priority/`, `regulator/`, `postgres/` and `metrics/`. Executable wiring is in `cmd/`; implementation packages are in `internal/`; focused tests are under `tests/`.
+Public integrations live in the packages listed above. Executable wiring is in `cmd/`, implementation details are in `internal/`, and focused tests are under `tests/`. The database-backed demo and Postman bundles are maintained in the documentation repository.
 
 ## License
 
 MIT. Gatewise is an independent project inspired by published overload-control techniques; it is not affiliated with Uber.
-
-### Priority propagation
-
-Optional `ServiceConfig.Priorities` adds 2–8 ordered tiers, compatibility mappings for Critical/Background, trusted HTTP metadata and optional rotating cohorts. Use `priority.With` after authentication and `priority.Transport` with an explicit downstream host allowlist. Missing metadata uses the route default; untrusted supplied metadata returns 403. Cohorts provide consistent ordering within a UTC epoch, not identical admission decisions across services or starvation guarantees. Existing services without tier configuration retain two-class admission. Priority configuration alone does not enable waiting or capacity borrowing.
-
-[Priority setup](https://hn026.github.io/gatewise-site/#/installation/priority-propagation) · [Runnable service chain](https://hn026.github.io/gatewise-site/#/examples/priority-chain)
-
-### Tenant sharing
-
-Optional `TenantConfig.Sharing` turns tenant caps into target shares and allows identified tenants to borrow up to separate total ceilings. Active/recent demand protects other tenants’ shares; targets scale down when the adaptive limit is smaller, and returning below-share work can pause new borrowing. Running requests finish normally. Hard caps remain the default. [Setup and allocation rules](https://hn026.github.io/gatewise-site/#/installation/tenant-sharing).
-
-Optional `ServiceConfig.Decisions` combines cached overload observations with existing admission controls. Start in observe mode, configure freshness/failure policies, then choose enforcement. Providers run in the background; existing integrations remain unchanged. [Signal setup](https://hn026.github.io/gatewise-site/#/installation/signal-setup) · [API and failure semantics](https://hn026.github.io/gatewise-site/#/reference/decision-reference).
-
-Optional `regulator` providers measure Go memory and goroutine pressure. Resource budgets reserve planned logical write bytes and concurrent work per bounded, hashed key; costs come from a trusted operation planner. [Setup and measurement boundaries](https://hn026.github.io/gatewise-site/#/installation/resource-setup).
