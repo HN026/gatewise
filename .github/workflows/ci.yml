@@ -20,6 +20,7 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
       - run: go test -race ./...
+      - run: go test -race ./tests/operation -run TestQueueCustomTiersAndCompatibilityMapping -count 100
       - run: go vet ./...
       - run: go build ./cmd/gatewise
   vulnerabilities:
