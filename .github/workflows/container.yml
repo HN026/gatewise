@@ -60,15 +60,23 @@ jobs:
         run: |
           docker pull "$IMAGE"
           python3 tests/container/check.py --image "$IMAGE" --output container-check.json
+      - name: Install verified native scanner
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          PLATFORM=Linux-64bit
+          if [ "$ARCH" = arm64 ]; then PLATFORM=Linux-ARM64; fi
+          ARCHIVE="trivy_0.70.0_${PLATFORM}.tar.gz"
+          BASE=https://github.com/aquasecurity/trivy/releases/download/v0.70.0
+          curl --fail --location --retry 3 --retry-all-errors "$BASE/$ARCHIVE" -o "$ARCHIVE"
+          curl --fail --location --retry 3 --retry-all-errors "$BASE/trivy_0.70.0_checksums.txt" -o checksums.txt
+          grep " $ARCHIVE$" checksums.txt | sha256sum --check --strict
+          tar -xzf "$ARCHIVE" trivy
+          ./trivy --version
       - name: Scan final runtime image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ghcr.io/hn026/gatewise@${{ steps.build.outputs.digest }}
-          format: json
-          output: vulnerabilities.json
-          severity: HIGH,CRITICAL
-          ignore-unfixed: false
-          exit-code: '1'
+        env:
+          IMAGE: ghcr.io/hn026/gatewise@${{ steps.build.outputs.digest }}
+        run: ./trivy image --scanners vuln --severity HIGH,CRITICAL --format json --output vulnerabilities.json --exit-code 1 "$IMAGE"
       - name: Record the qualified digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
